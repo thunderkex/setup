@@ -42,7 +42,6 @@ echo 'export PATH="$PATH:/opt/mssql-tools18/bin"' >> ~/.bashrc
 source ~/.bashrc
 
 # Install PHP extensions for SQL Server
-sudo ACCEPT_EULA=Y apt-get install -y php7.4-dev
 sudo pecl channel-update pecl.php.net
 sudo update-alternatives --set php /usr/bin/php7.4
 sudo update-alternatives --set php-config /usr/bin/php-config7.4
