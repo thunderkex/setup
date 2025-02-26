@@ -11,23 +11,65 @@ RED='\033[0;31m'
 GREEN='\033[0;32m'
 NC='\033[0m'
 
+# Detect Ubuntu version
+UBUNTU_VERSION=$(lsb_release -rs)
+echo -e "${GREEN}Detected Ubuntu version: ${UBUNTU_VERSION}${NC}"
+
+# Verify supported version
+if (( $(echo "$UBUNTU_VERSION < 20.04" | bc -l) )); then
+    echo -e "${RED}Unsupported Ubuntu version. Please use Ubuntu 20.04 or newer.${NC}"
+    exit 1
+fi
+
+# Install apt-fast for faster package installation
+if ! command -v apt-fast &> /dev/null; then
+    echo -e "${GREEN}Installing apt-fast...${NC}"
+    sudo add-apt-repository -y ppa:apt-fast/stable
+    sudo apt update
+    echo debconf apt-fast/maxdownloads string 16 | sudo debconf-set-selections
+    echo debconf apt-fast/dlflag boolean true | sudo debconf-set-selections
+    echo debconf apt-fast/aptmanager string apt | sudo debconf-set-selections
+    sudo apt install -y apt-fast
+fi
+
 echo -e "${GREEN}Setting up build environment for Android ROM compilation...${NC}"
 
 # Update system
 sudo apt-fast update && sudo apt-fast upgrade -y
 
-# Install basic packages
-sudo apt-fast install -y \
-    git ccache automake lzop bison gperf build-essential zip curl \
+# Define base packages
+BASE_PACKAGES="git ccache automake lzop bison gperf build-essential zip curl \
     zlib1g-dev g++-multilib libxml2-utils bzip2 libbz2-dev libbz2-1.0 \
     libghc-bzlib-dev squashfs-tools pngcrush schedtool dpkg-dev liblz4-tool \
     make optipng maven libssl-dev pwgen libswitch-perl policycoreutils minicom \
     libxml-sax-base-perl libxml-simple-perl bc libc6-dev-i386 libx11-dev \
-    libgl1-mesa-dev xsltproc unzip device-tree-compiler libncurses5-dev \
-    python-is-python3 python3-pip ninja-build lib32z1 lib32ncurses6 lib32stdc++6
+    libgl1-mesa-dev xsltproc unzip device-tree-compiler ninja-build lib32z1 lib32stdc++6"
 
-# Install both Java 11 and 17 (17 is required for newer Android versions)
-sudo apt-fast install -y openjdk-11-jdk openjdk-17-jdk
+# Version specific packages
+if (( $(echo "$UBUNTU_VERSION >= 22.04" | bc -l) )); then
+    # Ubuntu 22.04 and newer
+    PACKAGES="$BASE_PACKAGES libncurses5-dev python-is-python3 python3-pip lib32ncurses6"
+elif (( $(echo "$UBUNTU_VERSION >= 20.04" | bc -l) )); then
+    # Ubuntu 20.04
+    PACKAGES="$BASE_PACKAGES libncurses5-dev python python3-pip lib32ncurses6"
+fi
+
+# Install packages
+sudo apt-fast install -y $PACKAGES
+
+# Install Java based on Ubuntu version
+if (( $(echo "$UBUNTU_VERSION >= 22.04" | bc -l) )); then
+    sudo apt-fast install -y openjdk-11-jdk openjdk-17-jdk
+else
+    sudo apt-fast install -y openjdk-11-jdk
+    # For Ubuntu 20.04, manually install Java 17 if needed
+    if ! command -v java-17 &> /dev/null; then
+        sudo add-apt-repository -y ppa:openjdk-r/ppa
+        sudo apt-fast update
+        sudo apt-fast install -y openjdk-17-jdk
+    fi
+fi
+
 sudo update-alternatives --config java
 
 # Setup ccache
@@ -86,3 +128,4 @@ echo "2. Use 'repo sync -c -j$(nproc --all) --force-sync --no-clone-bundle --no-
 echo "3. Make sure to source build/envsetup.sh before building"
 echo "4. Ensure you have at least 200GB of free space"
 echo "5. RAM requirements: minimum 16GB recommended"
+echo "6. Detected Ubuntu version: ${UBUNTU_VERSION}"
