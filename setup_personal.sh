@@ -57,6 +57,13 @@ fi
 # Install packages
 sudo apt-fast install -y $PACKAGES
 
+# Install git-lfs
+if ! command -v git-lfs &> /dev/null; then
+    echo -e "${GREEN}Installing Git LFS...${NC}"
+    curl -s https://packagecloud.io/install/repositories/github/git-lfs/script.deb.sh | sudo bash
+    sudo apt-get install -y git-lfs
+fi
+
 # Install Java based on Ubuntu version
 if (( $(echo "$UBUNTU_VERSION >= 22.04" | bc -l) )); then
     sudo apt-fast install -y openjdk-11-jdk openjdk-17-jdk
