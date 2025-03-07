@@ -30,40 +30,81 @@ sudo apt-fast install -y \
     php7.4-bcmath \
     php7.4-intl
 
-# Install MSSQL Server
-curl https://packages.microsoft.com/keys/microsoft.asc | sudo tee /etc/apt/trusted.gpg.d/microsoft.asc
-sudo add-apt-repository "$(wget -qO- https://packages.microsoft.com/config/ubuntu/24.04/mssql-server-2022.list)"
+# Install required LDAP dependencies
+sudo apt-fast install -y curl
+
+# Download and install LDAP dependencies
+sudo curl -O http://debian.mirror.ac.za/debian/pool/main/o/openldap/libldap-2.5-0_2.5.13+dfsg-5_amd64.deb
+sudo curl -O http://debian.mirror.ac.za/debian/pool/main/o/openldap/libldap-dev_2.5.13+dfsg-5_amd64.deb
+sudo dpkg -i libldap-2.5-0_2.5.13+dfsg-5_amd64.deb
+sudo dpkg -i libldap-dev_2.5.13+dfsg-5_amd64.deb
+
+# Add Microsoft SQL Server repository
+curl https://packages.microsoft.com/keys/microsoft.asc | sudo tee /etc/apt/trusted.gpg.d/microsoft.asc > /dev/null
+echo "deb [arch=amd64] https://packages.microsoft.com/ubuntu/24.04/mssql-server-2022 noble main" | sudo tee /etc/apt/sources.list.d/mssql-server-2022.list
+
+# Clean apt lists and update
+sudo rm -rf /var/lib/apt/lists/*
 sudo apt-fast update
-sudo apt-fast install -y mssql-server
+
+# Install SQL Server
+sudo ACCEPT_EULA=Y apt-fast install -y mssql-server
+
+# Configure SQL Server
+echo "Configuring SQL Server. Please follow the prompts..."
 sudo /opt/mssql/bin/mssql-conf setup
 
-# Add Microsoft repository and install MS SQL tools
-curl -s https://packages.microsoft.com/keys/microsoft.asc | sudo tee /etc/apt/trusted.gpg.d/microsoft.asc > /dev/null
-sudo bash -c "curl -s https://packages.microsoft.com/config/ubuntu/24.04/prod.list > /etc/apt/sources.list.d/mssql-release.list"
-sudo apt-fast update
-sudo ACCEPT_EULA=Y apt-fast install -y msodbcsql18 mssql-tools18 unixodbc-dev
+# Verify installation and install tools in one go
+if systemctl is-active --quiet mssql-server; then
+    echo "SQL Server installation completed successfully"
+    
+    # Add Microsoft repository and install MS SQL tools
+    curl -s https://packages.microsoft.com/keys/microsoft.asc | sudo tee /etc/apt/trusted.gpg.d/microsoft.asc > /dev/null
+    sudo bash -c "curl -s https://packages.microsoft.com/config/ubuntu/24.04/prod.list > /etc/apt/sources.list.d/mssql-release.list"
+    sudo apt-fast update
+    sudo ACCEPT_EULA=Y apt-fast install -y msodbcsql18 mssql-tools18 unixodbc-dev
 
-# Add MS SQL tools to PATH
-echo 'export PATH="$PATH:/opt/mssql-tools18/bin"' >> ~/.bash_profile
-echo 'export PATH="$PATH:/opt/mssql-tools18/bin"' >> ~/.bashrc
-source ~/.bashrc
+    # Add MS SQL tools to PATH
+    echo 'export PATH="$PATH:/opt/mssql-tools18/bin"' >> ~/.bash_profile
+    echo 'export PATH="$PATH:/opt/mssql-tools18/bin"' >> ~/.bashrc
+    source ~/.bashrc
 
-# Install PHP extensions for SQL Server
-sudo pecl channel-update pecl.php.net
-sudo update-alternatives --set php /usr/bin/php7.4
-sudo update-alternatives --set php-config /usr/bin/php-config7.4
-sudo update-alternatives --set phpize /usr/bin/phpize7.4
-sudo pecl install -f sqlsrv
-sudo pecl install -f pdo_sqlsrv
+    # Install PHP extensions for SQL Server
+    sudo pecl channel-update pecl.php.net
+    sudo update-alternatives --set php /usr/bin/php7.4
+    sudo update-alternatives --set php-config /usr/bin/php-config7.4
+    sudo update-alternatives --set phpize /usr/bin/phpize7.4
+    
+    # Ensure PHP extension directories exist
+    sudo mkdir -p /etc/php/7.4/{cli,fpm}/conf.d/
+    
+    # Install SQL Server extensions
+    printf "\n" | sudo pecl install -f sqlsrv
+    printf "\n" | sudo pecl install -f pdo_sqlsrv
+    
+    # Configure extensions for both CLI and FPM
+    echo "extension=sqlsrv.so" | sudo tee /etc/php/7.4/cli/conf.d/20-sqlsrv.ini
+    echo "extension=pdo_sqlsrv.so" | sudo tee /etc/php/7.4/cli/conf.d/30-pdo_sqlsrv.ini
+    echo "extension=sqlsrv.so" | sudo tee /etc/php/7.4/fpm/conf.d/20-sqlsrv.ini
+    echo "extension=pdo_sqlsrv.so" | sudo tee /etc/php/7.4/fpm/conf.d/30-pdo_sqlsrv.ini
 
-# Configure PHP extensions
-sudo bash -c 'echo "extension=sqlsrv.so" > /etc/php/7.4/mods-available/sqlsrv.ini'
-sudo bash -c 'echo "extension=pdo_sqlsrv.so" > /etc/php/7.4/mods-available/pdo_sqlsrv.ini'
-sudo phpenmod -v 7.4 sqlsrv pdo_sqlsrv
+    # Create symlinks if mods-available directory exists
+    if [ -d "/etc/php/7.4/mods-available" ]; then
+        echo "extension=sqlsrv.so" | sudo tee /etc/php/7.4/mods-available/sqlsrv.ini
+        echo "extension=pdo_sqlsrv.so" | sudo tee /etc/php/7.4/mods-available/pdo_sqlsrv.ini
+        sudo phpenmod -v 7.4 sqlsrv pdo_sqlsrv
+    fi
+else
+    echo "SQL Server installation failed - service not running"
+    exit 1
+fi
 
 # Restart services
 sudo systemctl restart php7.4-fpm
 sudo systemctl restart nginx
 
-# Install Nginx UI
-sudo bash <(curl -L -s https://raw.githubusercontent.com/0xJacky/nginx-ui/master/install.sh) install
+# Install Nginx UI with proper error handling
+if ! curl -L -s https://raw.githubusercontent.com/0xJacky/nginx-ui/master/install.sh | sudo bash -s install; then
+    echo "Failed to install Nginx UI"
+    exit 1
+fi
