@@ -2,21 +2,28 @@
 # Ubuntu 20.04 only
 set -e
 
+# Check and install apt-fast if not present
+if ! command -v apt-fast &> /dev/null; then
+    sudo add-apt-repository -y ppa:apt-fast/stable
+    sudo apt-get update
+    sudo DEBIAN_FRONTEND=noninteractive apt-get -y install apt-fast
+fi
+
 # Install necessary dependencies
-sudo apt-get update
-sudo apt-get install -y software-properties-common curl nginx
+sudo apt-fast update
+sudo apt-fast install -y software-properties-common curl nginx
 
 # Install MSSQL Server
 curl https://packages.microsoft.com/keys/microsoft.asc | sudo tee /etc/apt/trusted.gpg.d/microsoft.asc
 sudo add-apt-repository "$(wget -qO- https://packages.microsoft.com/config/ubuntu/20.04/mssql-server-2022.list)"
-sudo apt-get update
-sudo apt-get install -y mssql-server
+sudo apt-fast update
+sudo apt-fast install -y mssql-server
 sudo /opt/mssql/bin/mssql-conf setup
 
 # Add PHP repository and install PHP 7.4
 sudo add-apt-repository -y ppa:ondrej/php
-sudo apt update
-sudo apt install -y \
+sudo apt-fast update
+sudo apt-fast install -y \
     php7.4-fpm \
     php7.4-cli \
     php7.4-mbstring \
@@ -30,8 +37,8 @@ sudo apt install -y \
 # Add Microsoft repository and install MS SQL tools
 curl -s https://packages.microsoft.com/keys/microsoft.asc | sudo apt-key add -
 sudo bash -c "curl -s https://packages.microsoft.com/config/ubuntu/20.04/prod.list > /etc/apt/sources.list.d/mssql-release.list"
-sudo apt-get update
-sudo ACCEPT_EULA=Y apt-get -y install msodbcsql17 mssql-tools unixodbc-dev
+sudo apt-fast update
+sudo ACCEPT_EULA=Y apt-fast -y install msodbcsql17 mssql-tools unixodbc-dev
 
 # Add MS SQL tools to PATH
 echo 'export PATH="$PATH:/opt/mssql-tools/bin"' >> ~/.bash_profile
