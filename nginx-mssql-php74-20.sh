@@ -1,6 +1,17 @@
 #!/bin/bash
 # Ubuntu 20.04 only
-set -e
+set -euo pipefail
+
+# Add logging function
+log() {
+    echo "[$(date '+%Y-%m-%d %H:%M:%S')] $1"
+}
+
+# Version check
+if [[ $(lsb_release -rs) != "20.04" ]]; then
+    log "Error: This script is only for Ubuntu 20.04"
+    exit 1
+fi
 
 # Check and install apt-fast if not present
 if ! command -v apt-fast &> /dev/null; then
@@ -58,3 +69,16 @@ sudo systemctl restart php7.4-fpm
 
 # Install Nginx UI
 sudo bash <(curl -L -s https://raw.githubusercontent.com/0xJacky/nginx-ui/master/install.sh) install
+
+# Add installation verification
+verify_services() {
+    local services=("nginx" "php7.4-fpm" "mssql-server")
+    for service in "${services[@]}"; do
+        if ! systemctl is-active --quiet "$service"; then
+            log "Error: $service is not running"
+            exit 1
+        fi
+    done
+}
+
+verify_services

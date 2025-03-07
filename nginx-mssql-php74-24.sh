@@ -1,6 +1,25 @@
 #!/bin/bash
 # Ubuntu 24.04 only
-set -e
+set -euo pipefail
+
+# Add logging function
+log() {
+    echo "[$(date '+%Y-%m-%d %H:%M:%S')] $1"
+}
+
+# Cleanup function
+cleanup() {
+    log "Cleaning up temporary files..."
+    rm -f libldap-2.5-0_2.5.13+dfsg-5_amd64.deb
+    rm -f libldap-dev_2.5.13+dfsg-5_amd64.deb
+}
+trap cleanup EXIT
+
+# Version check
+if [[ $(lsb_release -rs) != "24.04" ]]; then
+    log "Error: This script is only for Ubuntu 24.04"
+    exit 1
+fi
 
 # Check and install apt-fast if not present
 if ! command -v apt-fast &> /dev/null; then
@@ -51,12 +70,12 @@ sudo apt-fast update
 sudo ACCEPT_EULA=Y apt-fast install -y mssql-server
 
 # Configure SQL Server
-echo "Configuring SQL Server. Please follow the prompts..."
+log "Configuring SQL Server. Please follow the prompts..."
 sudo /opt/mssql/bin/mssql-conf setup
 
 # Verify installation and install tools in one go
 if systemctl is-active --quiet mssql-server; then
-    echo "SQL Server installation completed successfully"
+    log "SQL Server installation completed successfully"
     
     # Add Microsoft repository and install MS SQL tools
     curl -s https://packages.microsoft.com/keys/microsoft.asc | sudo tee /etc/apt/trusted.gpg.d/microsoft.asc > /dev/null
@@ -94,8 +113,20 @@ if systemctl is-active --quiet mssql-server; then
         echo "extension=pdo_sqlsrv.so" | sudo tee /etc/php/7.4/mods-available/pdo_sqlsrv.ini
         sudo phpenmod -v 7.4 sqlsrv pdo_sqlsrv
     fi
+
+    # Verify SQL Server version after install
+    if ! /opt/mssql/bin/sqlservr --version | grep -q "2022"; then
+        log "Error: SQL Server 2022 installation failed"
+        exit 1
+    fi
+
+    # Add verification for PHP modules
+    if ! php -m | grep -q "sqlsrv"; then
+        log "Error: sqlsrv module not installed correctly"
+        exit 1
+    fi
 else
-    echo "SQL Server installation failed - service not running"
+    log "SQL Server installation failed - service not running"
     exit 1
 fi
 
@@ -105,6 +136,6 @@ sudo systemctl restart nginx
 
 # Install Nginx UI with proper error handling
 if ! curl -L -s https://raw.githubusercontent.com/0xJacky/nginx-ui/master/install.sh | sudo bash -s install; then
-    echo "Failed to install Nginx UI"
+    log "Failed to install Nginx UI"
     exit 1
 fi

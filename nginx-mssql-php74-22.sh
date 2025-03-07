@@ -1,6 +1,17 @@
 #!/bin/bash
 # Ubuntu 22.04 only
-set -e
+set -euo pipefail
+
+# Add logging function
+log() {
+    echo "[$(date '+%Y-%m-%d %H:%M:%S')] $1"
+}
+
+# Version check
+if [[ $(lsb_release -rs) != "22.04" ]]; then
+    log "Error: This script is only for Ubuntu 22.04"
+    exit 1
+fi
 
 # Check and install apt-fast if not present
 if ! command -v apt-fast &> /dev/null; then
@@ -60,6 +71,21 @@ sudo pecl install -f pdo_sqlsrv
 sudo bash -c 'echo "extension=sqlsrv.so" > /etc/php/7.4/mods-available/sqlsrv.ini'
 sudo bash -c 'echo "extension=pdo_sqlsrv.so" > /etc/php/7.4/mods-available/pdo_sqlsrv.ini'
 sudo phpenmod -v 7.4 sqlsrv pdo_sqlsrv
+
+# Verify PHP and SQL Server installations
+verify_installation() {
+    log "Verifying installations..."
+    if ! php -v | grep -q "7.4"; then
+        log "Error: PHP 7.4 not installed correctly"
+        exit 1
+    fi
+    if ! systemctl is-active --quiet mssql-server; then
+        log "Error: SQL Server not running"
+        exit 1
+    fi
+}
+
+verify_installation
 
 # Restart services
 sudo systemctl restart php7.4-fpm
